@@ -38,11 +38,14 @@ let socket;
 let resizeTimer;
 let authToken = localStorage.getItem('terminalViewToken') || '';
 let terminalOpened = false;
+const appBasePath = location.pathname.endsWith('/')
+  ? location.pathname
+  : location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1);
 
 function socketUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const tokenParam = authToken ? `?token=${encodeURIComponent(authToken)}` : '';
-  return `${proto}//${location.host}/terminal${tokenParam}`;
+  return `${proto}//${location.host}${appBasePath}terminal${tokenParam}`;
 }
 
 function setStatus(text) {
@@ -68,7 +71,7 @@ function showLogin(message = '') {
 
 async function login(password) {
   loginError.textContent = '';
-  const response = await fetch('/api/login', {
+  const response = await fetch('api/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ password }),

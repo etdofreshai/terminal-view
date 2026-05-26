@@ -20,3 +20,10 @@ test('logout clears persisted token and returns to login screen', () => {
   assert.match(app, /localStorage\.removeItem\('terminalViewToken'\)/);
   assert.match(app, /logoutButton\.addEventListener\('click'/);
 });
+
+test('frontend uses relative paths so subpath Dokploy domains work', () => {
+  assert.doesNotMatch(html, /href="\//);
+  assert.doesNotMatch(html, /src="\//);
+  assert.match(app, /fetch\('api\/login'/);
+  assert.match(app, /return `\$\{proto\}\/\/\$\{location\.host\}\$\{appBasePath\}terminal/);
+});
