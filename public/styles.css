@@ -89,6 +89,9 @@ button {
   cursor: pointer;
 }
 button:hover { border-color: var(--accent); }
+.header-actions { display: flex; align-items: center; gap: 0.5rem; }
+#logout { background: #25101a; border-color: #633047; }
+#logout:hover { border-color: #ff8aa0; }
 
 main {
   min-height: 0;

@@ -9,6 +9,7 @@ const loginError = document.querySelector('#login-error');
 const terminalEl = document.querySelector('#terminal');
 const statusEl = document.querySelector('#status');
 const reconnectButton = document.querySelector('#reconnect');
+const logoutButton = document.querySelector('#logout');
 
 const term = new Terminal({
   cursorBlink: true,
@@ -35,7 +36,7 @@ term.loadAddon(fitAddon);
 
 let socket;
 let resizeTimer;
-let authToken = sessionStorage.getItem('terminalViewToken') || '';
+let authToken = localStorage.getItem('terminalViewToken') || '';
 let terminalOpened = false;
 
 function socketUrl() {
@@ -75,7 +76,7 @@ async function login(password) {
   if (!response.ok) throw new Error('Invalid password');
   const body = await response.json();
   authToken = body.token;
-  sessionStorage.setItem('terminalViewToken', authToken);
+  localStorage.setItem('terminalViewToken', authToken);
   showTerminal();
   connect();
 }
@@ -94,7 +95,7 @@ function connect() {
   socket.addEventListener('message', (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === 'auth_required') {
-      sessionStorage.removeItem('terminalViewToken');
+      localStorage.removeItem('terminalViewToken');
       authToken = '';
       showLogin('Password required');
       return;
@@ -128,6 +129,13 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(sendResize, 80);
 });
 reconnectButton.addEventListener('click', connect);
+logoutButton.addEventListener('click', () => {
+  localStorage.removeItem('terminalViewToken');
+  authToken = '';
+  if (socket && socket.readyState <= WebSocket.OPEN) socket.close();
+  term.clear();
+  showLogin('Logged out');
+});
 loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   try {

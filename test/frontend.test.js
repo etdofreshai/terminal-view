@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+
+test('terminal UI exposes a logout button', () => {
+  assert.match(html, /id="logout"/);
+  assert.match(html, />\s*Log out\s*</);
+});
+
+test('auth token persists in localStorage so login survives browser restarts', () => {
+  assert.match(app, /localStorage\.getItem\('terminalViewToken'\)/);
+  assert.match(app, /localStorage\.setItem\('terminalViewToken'/);
+  assert.doesNotMatch(app, /sessionStorage\.setItem\('terminalViewToken'/);
+});
+
+test('logout clears persisted token and returns to login screen', () => {
+  assert.match(app, /localStorage\.removeItem\('terminalViewToken'\)/);
+  assert.match(app, /logoutButton\.addEventListener\('click'/);
+});
