@@ -21,9 +21,11 @@ test('logout clears persisted token and returns to login screen', () => {
   assert.match(app, /logoutButton\.addEventListener\('click'/);
 });
 
-test('frontend builds API and WebSocket URLs from the current subpath', () => {
-  assert.doesNotMatch(html, /href="\//);
-  assert.doesNotMatch(html, /src="\//);
+test('frontend builds API and WebSocket URLs from the configured subpath', () => {
+  assert.match(html, /window\.TERMINAL_VIEW_BASE_PATH = '__APP_BASE_PATH__'/);
+  assert.match(html, /href="__APP_BASE_PATH__styles\.css"/);
+  assert.match(html, /src="__APP_BASE_PATH__app\.js"/);
+  assert.match(app, /window\.TERMINAL_VIEW_BASE_PATH/);
   assert.match(app, /function appBasePath\(\)/);
   assert.match(app, /return `\$\{path\}\/`/);
   assert.match(app, /fetch\(appUrl\('api\/login'\)/);

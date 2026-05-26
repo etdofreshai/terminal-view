@@ -13,6 +13,7 @@ const PORT = Number(process.env.PORT || 3000);
 const SHELL = process.env.SHELL || '/bin/bash';
 const STARTING_DIRECTORY = resolveStartingDirectory(process.env.STARTING_DIRECTORY || '~/workspace');
 const TERMINAL_PASSWORD = process.env.TERMINAL_PASSWORD || '';
+const APP_BASE_PATH = normalizeBasePath(process.env.APP_BASE_PATH || '/');
 const sessions = new Map();
 
 function resolveStartingDirectory(dir) {
@@ -26,6 +27,17 @@ function resolveStartingDirectory(dir) {
     throw new Error(`STARTING_DIRECTORY is not a directory: ${resolved}`);
   }
   return resolved;
+}
+
+function normalizeBasePath(basePath) {
+  if (!basePath || basePath === '/') return '/';
+  return `/${basePath.replace(/^\/+|\/+$/g, '')}/`;
+}
+
+function renderIndexHtml() {
+  return fs
+    .readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
+    .replaceAll('__APP_BASE_PATH__', APP_BASE_PATH);
 }
 
 function timingSafeEqualString(a, b) {
@@ -56,14 +68,11 @@ app.use(express.json({ limit: '8kb' }));
 app.use((req, res, next) => {
   if (
     req.method === 'GET' &&
-    req.path !== '/' &&
     req.path !== '/healthz' &&
     !req.path.startsWith('/api/') &&
-    !req.path.endsWith('/') &&
-    !path.basename(req.path).includes('.')
+    (req.path === '/' || (!req.path.endsWith('/') && !path.basename(req.path).includes('.')))
   ) {
-    const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    res.redirect(308, `${req.path}/${query}`);
+    res.type('html').send(renderIndexHtml());
     return;
   }
   next();

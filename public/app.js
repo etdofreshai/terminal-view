@@ -39,6 +39,8 @@ let resizeTimer;
 let authToken = localStorage.getItem('terminalViewToken') || '';
 let terminalOpened = false;
 function appBasePath() {
+  const configuredBasePath = window.TERMINAL_VIEW_BASE_PATH;
+  if (configuredBasePath) return configuredBasePath;
   const path = location.pathname;
   if (path === '/') return '/';
   if (path.endsWith('/')) return path;

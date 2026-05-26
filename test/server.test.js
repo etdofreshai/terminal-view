@@ -32,9 +32,8 @@ test('server exposes health and starts shell in STARTING_DIRECTORY', async () =>
     assert.equal(health.ok, true);
     assert.equal(health.startingDirectory, startingDirectory);
 
-    const subpath = await fetch(`http://127.0.0.1:${port}/etzminisforumx1pro`, { redirect: 'manual' });
-    assert.equal(subpath.status, 308);
-    assert.equal(subpath.headers.get('location'), '/etzminisforumx1pro/');
+    const subpath = await fetch(`http://127.0.0.1:${port}/etzminisforumx1pro`).then((r) => r.text());
+    assert.match(subpath, /window\.TERMINAL_VIEW_BASE_PATH = '\/'/);
 
     const ws = new WebSocket(`ws://127.0.0.1:${port}/terminal`);
     await once(ws, 'open');
