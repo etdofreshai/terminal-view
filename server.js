@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import pty from 'node-pty';
+import httpProxy from 'http-proxy';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -14,6 +15,8 @@ const SHELL = process.env.SHELL || '/bin/bash';
 const STARTING_DIRECTORY = resolveStartingDirectory(process.env.STARTING_DIRECTORY || '~/workspace');
 const TERMINAL_PASSWORD = process.env.TERMINAL_PASSWORD || '';
 const APP_BASE_PATH = normalizeBasePath(process.env.APP_BASE_PATH || '/');
+const TERMINAL_PROXY_ROUTES = parseProxyRoutes(process.env.TERMINAL_PROXY_ROUTES || '');
+const proxy = httpProxy.createProxyServer({ ws: true, xfwd: true });
 const sessions = new Map();
 
 function resolveStartingDirectory(dir) {
@@ -32,6 +35,35 @@ function resolveStartingDirectory(dir) {
 function normalizeBasePath(basePath) {
   if (!basePath || basePath === '/') return '/';
   return `/${basePath.replace(/^\/+|\/+$/g, '')}/`;
+}
+
+function parseProxyRoutes(raw) {
+  const routes = new Map();
+  for (const entry of raw.split(/[\n,]+/)) {
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    const [slug, ...targetParts] = trimmed.split('=');
+    const target = targetParts.join('=').trim().replace(/\/+$/, '');
+    const key = slug.trim().replace(/^\/+|\/+$/g, '');
+    if (key && target) routes.set(key, target);
+  }
+  return routes;
+}
+
+function proxyRouteForPath(pathname) {
+  const slug = pathname.split('/').filter(Boolean)[0];
+  if (!slug) return null;
+  const target = TERMINAL_PROXY_ROUTES.get(slug);
+  return target ? { slug, target } : null;
+}
+
+function stripProxySlug(req, slug) {
+  const prefix = `/${slug}`;
+  if (req.url === prefix) {
+    req.url = '/';
+    return;
+  }
+  if (req.url?.startsWith(`${prefix}/`)) req.url = req.url.slice(prefix.length) || '/';
 }
 
 function renderIndexHtml() {
@@ -64,6 +96,15 @@ function isValidToken(token) {
 }
 
 const app = express();
+app.use((req, res, next) => {
+  const route = proxyRouteForPath(req.path);
+  if (!route) return next();
+  stripProxySlug(req, route.slug);
+  proxy.web(req, res, { target: route.target, changeOrigin: true }, (error) => {
+    console.error(`proxy error for /${route.slug} -> ${route.target}: ${error.message}`);
+    if (!res.headersSent) res.status(502).send(`Proxy error for ${route.slug}`);
+  });
+});
 app.use(express.json({ limit: '8kb' }));
 app.use((req, res, next) => {
   if (
@@ -100,6 +141,15 @@ const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
   const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+  const route = proxyRouteForPath(pathname);
+  if (route) {
+    stripProxySlug(req, route.slug);
+    proxy.ws(req, socket, head, { target: route.target, changeOrigin: true }, (error) => {
+      console.error(`proxy websocket error for /${route.slug} -> ${route.target}: ${error.message}`);
+      socket.destroy();
+    });
+    return;
+  }
   if (pathname === '/terminal' || pathname.endsWith('/terminal')) {
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit('connection', ws, req);
@@ -165,6 +215,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`PORT=${PORT}`);
   console.log(`STARTING_DIRECTORY=${STARTING_DIRECTORY}`);
   console.log(`APP_BASE_PATH=${APP_BASE_PATH}`);
+  console.log(`TERMINAL_PROXY_ROUTES=${[...TERMINAL_PROXY_ROUTES.entries()].map(([slug, target]) => `${slug}->${target}`).join(',') || 'none'}`);
   console.log(`SHELL=${SHELL}`);
   console.log(`TERMINAL_PASSWORD=${TERMINAL_PASSWORD ? 'set' : 'not set'}`);
 });
