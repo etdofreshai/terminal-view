@@ -4,16 +4,17 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
 
-const port = 4600 + Math.floor(Math.random() * 1000);
+let nextPort = 4600 + Math.floor(Math.random() * 1000);
 
 async function startServer(env = {}) {
+  const port = nextPort++;
   const child = spawn(process.execPath, ['server.js'], {
     cwd: new URL('..', import.meta.url),
     env: { ...process.env, PORT: String(port), STARTING_DIRECTORY: '/tmp/terminal-view-auth-test', SHELL: '/bin/bash', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await once(child.stdout, 'data');
-  return child;
+  return { child, port };
 }
 
 function wsMessage(ws, timeoutMs = 3000) {
@@ -27,7 +28,7 @@ function wsMessage(ws, timeoutMs = 3000) {
 }
 
 test('password endpoint returns a token for the configured terminal password', async () => {
-  const child = await startServer({ TERMINAL_PASSWORD: 'correct horse' });
+  const { child, port } = await startServer({ TERMINAL_PASSWORD: 'correct horse' });
   try {
     const bad = await fetch(`http://127.0.0.1:${port}/api/login`, {
       method: 'POST',
@@ -51,7 +52,7 @@ test('password endpoint returns a token for the configured terminal password', a
 });
 
 test('terminal websocket requires a valid login token when TERMINAL_PASSWORD is set', async () => {
-  const child = await startServer({ TERMINAL_PASSWORD: 'secret' });
+  const { child, port } = await startServer({ TERMINAL_PASSWORD: 'secret' });
   try {
     const unauth = new WebSocket(`ws://127.0.0.1:${port}/terminal`);
     await once(unauth, 'open');
@@ -64,6 +65,24 @@ test('terminal websocket requires a valid login token when TERMINAL_PASSWORD is 
       body: JSON.stringify({ password: 'secret' }),
     }).then((r) => r.json());
     const authed = new WebSocket(`ws://127.0.0.1:${port}/terminal?token=${encodeURIComponent(login.token)}`);
+    await once(authed, 'open');
+    const ready = await wsMessage(authed);
+    assert.equal(ready.type, 'ready');
+    authed.close();
+  } finally {
+    child.kill('SIGTERM');
+  }
+});
+
+test('terminal websocket accepts subpath-mounted terminal routes', async () => {
+  const { child, port } = await startServer({ TERMINAL_PASSWORD: 'secret' });
+  try {
+    const login = await fetch(`http://127.0.0.1:${port}/api/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: 'secret' }),
+    }).then((r) => r.json());
+    const authed = new WebSocket(`ws://127.0.0.1:${port}/etzminisforumx1pro/terminal?token=${encodeURIComponent(login.token)}`);
     await once(authed, 'open');
     const ready = await wsMessage(authed);
     assert.equal(ready.type, 'ready');

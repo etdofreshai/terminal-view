@@ -72,7 +72,18 @@ app.post('/api/login', (req, res) => {
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/terminal' });
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (req, socket, head) => {
+  const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+  if (pathname === '/terminal' || pathname.endsWith('/terminal')) {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+    return;
+  }
+  socket.destroy();
+});
 
 wss.on('connection', (ws, req) => {
   const token = new URL(req.url || '/terminal', 'http://localhost').searchParams.get('token') || '';

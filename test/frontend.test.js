@@ -21,9 +21,11 @@ test('logout clears persisted token and returns to login screen', () => {
   assert.match(app, /logoutButton\.addEventListener\('click'/);
 });
 
-test('frontend uses relative paths so subpath Dokploy domains work', () => {
+test('frontend builds API and WebSocket URLs from the current subpath', () => {
   assert.doesNotMatch(html, /href="\//);
   assert.doesNotMatch(html, /src="\//);
-  assert.match(app, /fetch\('api\/login'/);
-  assert.match(app, /return `\$\{proto\}\/\/\$\{location\.host\}\$\{appBasePath\}terminal/);
+  assert.match(app, /function appBasePath\(\)/);
+  assert.match(app, /return `\$\{path\}\/`/);
+  assert.match(app, /fetch\(appUrl\('api\/login'\)/);
+  assert.match(app, /return `\$\{proto\}\/\/\$\{location\.host\}\$\{appUrl\('terminal'\)\}/);
 });
