@@ -4,7 +4,7 @@ A tiny web app that opens an interactive shell in the browser.
 
 ## Configuration
 
-- `STARTING_DIRECTORY`: directory where new terminal sessions start. Defaults to `~/workspace`.
+- `STARTING_DIRECTORY`: directory where new terminal sessions start. Defaults to exactly `~/workspace`.
 - `PORT`: HTTP port. Defaults to `3000`.
 - `SHELL`: shell executable. Defaults to `$SHELL`, then `/bin/bash`.
 
@@ -42,19 +42,19 @@ Build and run:
 ```bash
 docker build -t terminal-view .
 docker run --rm -p 3000:3000 \
-  -e STARTING_DIRECTORY=/workspace \
-  -v "$HOME/workspace:/workspace" \
+  -e STARTING_DIRECTORY='~/workspace' \
+  -v "$HOME/workspace:/root/workspace" \
   terminal-view
 ```
 
 For Dokploy, set at least:
 
 ```env
-STARTING_DIRECTORY=/workspace
+STARTING_DIRECTORY=~/workspace
 PORT=3000
 ```
 
-Mount the directory you want exposed as `/workspace`, or set `STARTING_DIRECTORY` to the path you mount. CLI auth files and provider API keys are not baked into the image; pass them as environment variables or mount the relevant home-directory auth files when needed.
+Mount the directory you want exposed as `/root/workspace`; terminal sessions start from `~/workspace`, which resolves to `/root/workspace` inside the container. CLI auth files and provider API keys are not baked into the image; pass them as environment variables or mount the relevant home-directory auth files when needed.
 
 ## Security note
 

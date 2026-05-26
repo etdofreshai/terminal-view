@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim
 
 ENV NODE_ENV=production \
     PORT=3000 \
-    STARTING_DIRECTORY=/workspace \
+    STARTING_DIRECTORY=~/workspace \
     SHELL=/bin/bash \
     NPM_CONFIG_PREFIX=/usr/local
 
@@ -42,8 +42,8 @@ RUN npm ci --omit=dev
 COPY public ./public
 COPY server.js README.md ./
 
-RUN mkdir -p /workspace
-VOLUME ["/workspace"]
+RUN mkdir -p /root/workspace
+VOLUME ["/root/workspace"]
 
 EXPOSE 3000
 
