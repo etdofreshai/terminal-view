@@ -46,6 +46,4 @@ COPY server.js README.md ./
 RUN mkdir -p /root/workspace
 VOLUME ["/root/workspace"]
 
-EXPOSE 3000
-
 CMD ["npm", "start"]

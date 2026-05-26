@@ -162,6 +162,9 @@ wss.on('connection', (ws, req) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`terminal-view listening on http://0.0.0.0:${PORT}`);
+  console.log(`PORT=${PORT}`);
   console.log(`STARTING_DIRECTORY=${STARTING_DIRECTORY}`);
+  console.log(`APP_BASE_PATH=${APP_BASE_PATH}`);
+  console.log(`SHELL=${SHELL}`);
   console.log(`TERMINAL_PASSWORD=${TERMINAL_PASSWORD ? 'set' : 'not set'}`);
 });
