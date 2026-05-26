@@ -7,6 +7,7 @@ A tiny web app that opens an interactive shell in the browser.
 - `STARTING_DIRECTORY`: directory where new terminal sessions start. Defaults to exactly `~/workspace`.
 - `PORT`: HTTP port. Defaults to `3000`.
 - `SHELL`: shell executable. Defaults to `$SHELL`, then `/bin/bash`.
+- `TERMINAL_PASSWORD`: optional web unlock password. If set, the browser shows a password screen before opening a shell.
 
 `STARTING_DIRECTORY` supports `~` expansion and is created if it does not exist.
 

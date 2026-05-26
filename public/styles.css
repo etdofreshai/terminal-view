@@ -18,9 +18,54 @@ body {
   background: radial-gradient(circle at 20% 10%, #102a45 0, transparent 30%), var(--bg);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+[hidden] { display: none !important; }
+
+#terminal-screen {
+  min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
 }
+
+#login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.login-card {
+  width: min(420px, calc(100vw - 2rem));
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(5, 7, 13, 0.84);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45), 0 0 40px rgba(0, 229, 255, 0.08);
+}
+
+.login-kicker {
+  color: var(--accent);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  margin-bottom: 0.5rem;
+}
+
+label { display: block; margin: 1rem 0 0.4rem; color: var(--muted); font-size: 0.86rem; }
+input[type="password"] {
+  width: 100%;
+  border: 1px solid #214d63;
+  background: #020409;
+  color: var(--text);
+  border-radius: 12px;
+  padding: 0.8rem;
+  font: inherit;
+  outline: none;
+}
+input[type="password"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.12); }
+#login-form button { width: 100%; margin-top: 1rem; border-radius: 12px; padding: 0.8rem; }
+#login-error { color: #ff8aa0; min-height: 1.2rem; }
 
 header {
   display: flex;

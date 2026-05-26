@@ -3,6 +3,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import pty from 'node-pty';
@@ -11,6 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
 const SHELL = process.env.SHELL || '/bin/bash';
 const STARTING_DIRECTORY = resolveStartingDirectory(process.env.STARTING_DIRECTORY || '~/workspace');
+const TERMINAL_PASSWORD = process.env.TERMINAL_PASSWORD || '';
+const sessions = new Map();
 
 function resolveStartingDirectory(dir) {
   const expanded = dir.replace(/^~(?=$|\/)/, os.homedir());
@@ -25,16 +28,60 @@ function resolveStartingDirectory(dir) {
   return resolved;
 }
 
+function timingSafeEqualString(a, b) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function issueToken() {
+  const token = crypto.randomBytes(32).toString('base64url');
+  sessions.set(token, Date.now() + 1000 * 60 * 60 * 12);
+  return token;
+}
+
+function isValidToken(token) {
+  if (!TERMINAL_PASSWORD) return true;
+  const expires = sessions.get(token);
+  if (!expires) return false;
+  if (expires < Date.now()) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
 const app = express();
+app.use(express.json({ limit: '8kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/healthz', (_req, res) => {
-  res.json({ ok: true, startingDirectory: STARTING_DIRECTORY, shell: SHELL });
+  res.json({ ok: true, startingDirectory: STARTING_DIRECTORY, shell: SHELL, passwordRequired: Boolean(TERMINAL_PASSWORD) });
+});
+
+app.post('/api/login', (req, res) => {
+  if (!TERMINAL_PASSWORD) {
+    res.json({ token: issueToken(), passwordRequired: false });
+    return;
+  }
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!timingSafeEqualString(password, TERMINAL_PASSWORD)) {
+    res.status(401).json({ error: 'Invalid password' });
+    return;
+  }
+  res.json({ token: issueToken(), passwordRequired: true });
 });
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/terminal' });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const token = new URL(req.url || '/terminal', 'http://localhost').searchParams.get('token') || '';
+  if (!isValidToken(token)) {
+    ws.send(JSON.stringify({ type: 'auth_required' }));
+    ws.close(1008, 'Authentication required');
+    return;
+  }
+
   const term = pty.spawn(SHELL, [], {
     name: 'xterm-256color',
     cols: 100,
@@ -81,4 +128,5 @@ wss.on('connection', (ws) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`terminal-view listening on http://0.0.0.0:${PORT}`);
   console.log(`STARTING_DIRECTORY=${STARTING_DIRECTORY}`);
+  console.log(`TERMINAL_PASSWORD=${TERMINAL_PASSWORD ? 'set' : 'not set'}`);
 });
