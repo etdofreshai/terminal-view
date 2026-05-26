@@ -1,5 +1,5 @@
-import { Terminal } from '/vendor/xterm.js';
-import { FitAddon } from '/vendor/xterm-addon-fit.js';
+const { Terminal } = window;
+const { FitAddon } = window.FitAddon;
 
 const terminalEl = document.querySelector('#terminal');
 const statusEl = document.querySelector('#status');
