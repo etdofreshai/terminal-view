@@ -10,7 +10,9 @@ A tiny web app that opens an interactive shell in the browser.
 
 `STARTING_DIRECTORY` supports `~` expansion and is created if it does not exist.
 
-## Run
+## Run locally
+
+Most of the time, just run it directly with npm:
 
 ```bash
 npm install
@@ -24,6 +26,35 @@ Example:
 ```bash
 STARTING_DIRECTORY=/srv/projects PORT=8080 npm start
 ```
+
+## Docker / Dokploy
+
+The Docker image includes the AI coding harness CLIs ET commonly uses in terminal sessions:
+
+- `claude` — Claude Code
+- `codex` — OpenAI Codex CLI
+- `opencode` — OpenCode CLI
+- `gemini` — Google Gemini CLI
+- `pi` — Pi Coding Agent
+
+Build and run:
+
+```bash
+docker build -t terminal-view .
+docker run --rm -p 3000:3000 \
+  -e STARTING_DIRECTORY=/workspace \
+  -v "$HOME/workspace:/workspace" \
+  terminal-view
+```
+
+For Dokploy, set at least:
+
+```env
+STARTING_DIRECTORY=/workspace
+PORT=3000
+```
+
+Mount the directory you want exposed as `/workspace`, or set `STARTING_DIRECTORY` to the path you mount. CLI auth files and provider API keys are not baked into the image; pass them as environment variables or mount the relevant home-directory auth files when needed.
 
 ## Security note
 
