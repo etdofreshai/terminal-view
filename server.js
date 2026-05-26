@@ -7,7 +7,6 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import pty from 'node-pty';
-import httpProxy from 'http-proxy';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -15,8 +14,7 @@ const SHELL = process.env.SHELL || '/bin/bash';
 const STARTING_DIRECTORY = resolveStartingDirectory(process.env.STARTING_DIRECTORY || '~/workspace');
 const TERMINAL_PASSWORD = process.env.TERMINAL_PASSWORD || '';
 const APP_BASE_PATH = normalizeBasePath(process.env.APP_BASE_PATH || '/');
-const TERMINAL_PROXY_ROUTES = parseProxyRoutes(process.env.TERMINAL_PROXY_ROUTES || '');
-const proxy = httpProxy.createProxyServer({ ws: true, xfwd: true });
+const TERMINAL_SSH_ROUTES = parseRoutes(process.env.TERMINAL_SSH_ROUTES || '');
 const sessions = new Map();
 
 function resolveStartingDirectory(dir) {
@@ -37,27 +35,27 @@ function normalizeBasePath(basePath) {
   return `/${basePath.replace(/^\/+|\/+$/g, '')}/`;
 }
 
-function parseProxyRoutes(raw) {
+function parseRoutes(raw) {
   const routes = new Map();
   for (const entry of raw.split(/[\n,]+/)) {
     const trimmed = entry.trim();
     if (!trimmed) continue;
     const [slug, ...targetParts] = trimmed.split('=');
-    const target = targetParts.join('=').trim().replace(/\/+$/, '');
+    const target = targetParts.join('=').trim();
     const key = slug.trim().replace(/^\/+|\/+$/g, '');
     if (key && target) routes.set(key, target);
   }
   return routes;
 }
 
-function proxyRouteForPath(pathname) {
+function routeForPath(pathname) {
   const slug = pathname.split('/').filter(Boolean)[0];
   if (!slug) return null;
-  const target = TERMINAL_PROXY_ROUTES.get(slug);
+  const target = TERMINAL_SSH_ROUTES.get(slug);
   return target ? { slug, target } : null;
 }
 
-function stripProxySlug(req, slug) {
+function stripRouteSlug(req, slug) {
   const prefix = `/${slug}`;
   if (req.url === prefix) {
     req.url = '/';
@@ -66,10 +64,10 @@ function stripProxySlug(req, slug) {
   if (req.url?.startsWith(`${prefix}/`)) req.url = req.url.slice(prefix.length) || '/';
 }
 
-function renderIndexHtml() {
+function renderIndexHtml(basePath = APP_BASE_PATH) {
   return fs
     .readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
-    .replaceAll('__APP_BASE_PATH__', APP_BASE_PATH);
+    .replaceAll('__APP_BASE_PATH__', normalizeBasePath(basePath));
 }
 
 function timingSafeEqualString(a, b) {
@@ -95,15 +93,18 @@ function isValidToken(token) {
   return true;
 }
 
+function sshCommandForTarget(target) {
+  const args = ['-tt', '-o', 'StrictHostKeyChecking=accept-new', target];
+  return { command: 'ssh', args, displayCwd: `ssh://${target}` };
+}
+
 const app = express();
 app.use((req, res, next) => {
-  const route = proxyRouteForPath(req.path);
+  const route = routeForPath(req.path);
   if (!route) return next();
-  stripProxySlug(req, route.slug);
-  proxy.web(req, res, { target: route.target, changeOrigin: true }, (error) => {
-    console.error(`proxy error for /${route.slug} -> ${route.target}: ${error.message}`);
-    if (!res.headersSent) res.status(502).send(`Proxy error for ${route.slug}`);
-  });
+  res.locals.appBasePath = `/${route.slug}/`;
+  stripRouteSlug(req, route.slug);
+  next();
 });
 app.use(express.json({ limit: '8kb' }));
 app.use((req, res, next) => {
@@ -113,14 +114,20 @@ app.use((req, res, next) => {
     !req.path.startsWith('/api/') &&
     (req.path === '/' || (!req.path.endsWith('/') && !path.basename(req.path).includes('.')))
   ) {
-    res.type('html').send(renderIndexHtml());
+    res.type('html').send(renderIndexHtml(res.locals.appBasePath));
     return;
   }
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/healthz', (_req, res) => {
-  res.json({ ok: true, startingDirectory: STARTING_DIRECTORY, shell: SHELL, passwordRequired: Boolean(TERMINAL_PASSWORD) });
+  res.json({
+    ok: true,
+    startingDirectory: STARTING_DIRECTORY,
+    shell: SHELL,
+    passwordRequired: Boolean(TERMINAL_PASSWORD),
+    sshRoutes: [...TERMINAL_SSH_ROUTES.keys()],
+  });
 });
 
 app.post('/api/login', (req, res) => {
@@ -141,16 +148,13 @@ const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
   const pathname = new URL(req.url || '/', 'http://localhost').pathname;
-  const route = proxyRouteForPath(pathname);
+  const route = routeForPath(pathname);
   if (route) {
-    stripProxySlug(req, route.slug);
-    proxy.ws(req, socket, head, { target: route.target, changeOrigin: true }, (error) => {
-      console.error(`proxy websocket error for /${route.slug} -> ${route.target}: ${error.message}`);
-      socket.destroy();
-    });
-    return;
+    req.terminalSshRoute = route;
+    stripRouteSlug(req, route.slug);
   }
-  if (pathname === '/terminal' || pathname.endsWith('/terminal')) {
+  const terminalPath = new URL(req.url || '/', 'http://localhost').pathname;
+  if (terminalPath === '/terminal' || (!route && pathname.endsWith('/terminal'))) {
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit('connection', ws, req);
     });
@@ -167,7 +171,9 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  const term = pty.spawn(SHELL, [], {
+  const sshRoute = req.terminalSshRoute;
+  const spawnSpec = sshRoute ? sshCommandForTarget(sshRoute.target) : { command: SHELL, args: [], displayCwd: STARTING_DIRECTORY };
+  const term = pty.spawn(spawnSpec.command, spawnSpec.args, {
     name: 'xterm-256color',
     cols: 100,
     rows: 30,
@@ -180,7 +186,7 @@ wss.on('connection', (ws, req) => {
     },
   });
 
-  ws.send(JSON.stringify({ type: 'ready', cwd: STARTING_DIRECTORY, pid: term.pid }));
+  ws.send(JSON.stringify({ type: 'ready', cwd: spawnSpec.displayCwd, pid: term.pid }));
 
   term.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'data', data }));
@@ -215,7 +221,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`PORT=${PORT}`);
   console.log(`STARTING_DIRECTORY=${STARTING_DIRECTORY}`);
   console.log(`APP_BASE_PATH=${APP_BASE_PATH}`);
-  console.log(`TERMINAL_PROXY_ROUTES=${[...TERMINAL_PROXY_ROUTES.entries()].map(([slug, target]) => `${slug}->${target}`).join(',') || 'none'}`);
+  console.log(`TERMINAL_SSH_ROUTES=${[...TERMINAL_SSH_ROUTES.entries()].map(([slug, target]) => `${slug}->${target}`).join(',') || 'none'}`);
   console.log(`SHELL=${SHELL}`);
   console.log(`TERMINAL_PASSWORD=${TERMINAL_PASSWORD ? 'set' : 'not set'}`);
 });
