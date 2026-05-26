@@ -53,6 +53,21 @@ function isValidToken(token) {
 
 const app = express();
 app.use(express.json({ limit: '8kb' }));
+app.use((req, res, next) => {
+  if (
+    req.method === 'GET' &&
+    req.path !== '/' &&
+    req.path !== '/healthz' &&
+    !req.path.startsWith('/api/') &&
+    !req.path.endsWith('/') &&
+    !path.basename(req.path).includes('.')
+  ) {
+    const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    res.redirect(308, `${req.path}/${query}`);
+    return;
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true, startingDirectory: STARTING_DIRECTORY, shell: SHELL, passwordRequired: Boolean(TERMINAL_PASSWORD) });
