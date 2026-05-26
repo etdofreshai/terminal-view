@@ -1,0 +1,84 @@
+import express from 'express';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { WebSocketServer } from 'ws';
+import pty from 'node-pty';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PORT = Number(process.env.PORT || 3000);
+const SHELL = process.env.SHELL || '/bin/bash';
+const STARTING_DIRECTORY = resolveStartingDirectory(process.env.STARTING_DIRECTORY || '~/workspace');
+
+function resolveStartingDirectory(dir) {
+  const expanded = dir.replace(/^~(?=$|\/)/, os.homedir());
+  const resolved = path.resolve(expanded);
+  if (!fs.existsSync(resolved)) {
+    fs.mkdirSync(resolved, { recursive: true });
+  }
+  const stat = fs.statSync(resolved);
+  if (!stat.isDirectory()) {
+    throw new Error(`STARTING_DIRECTORY is not a directory: ${resolved}`);
+  }
+  return resolved;
+}
+
+const app = express();
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/healthz', (_req, res) => {
+  res.json({ ok: true, startingDirectory: STARTING_DIRECTORY, shell: SHELL });
+});
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server, path: '/terminal' });
+
+wss.on('connection', (ws) => {
+  const term = pty.spawn(SHELL, [], {
+    name: 'xterm-256color',
+    cols: 100,
+    rows: 30,
+    cwd: STARTING_DIRECTORY,
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      STARTING_DIRECTORY,
+    },
+  });
+
+  ws.send(JSON.stringify({ type: 'ready', cwd: STARTING_DIRECTORY, pid: term.pid }));
+
+  term.onData((data) => {
+    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'data', data }));
+  });
+
+  term.onExit(({ exitCode, signal }) => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'exit', exitCode, signal }));
+      ws.close();
+    }
+  });
+
+  ws.on('message', (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+    if (msg.type === 'data' && typeof msg.data === 'string') term.write(msg.data);
+    if (msg.type === 'resize' && Number.isFinite(msg.cols) && Number.isFinite(msg.rows)) {
+      term.resize(Math.max(10, msg.cols), Math.max(5, msg.rows));
+    }
+  });
+
+  ws.on('close', () => term.kill());
+  ws.on('error', () => term.kill());
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`terminal-view listening on http://0.0.0.0:${PORT}`);
+  console.log(`STARTING_DIRECTORY=${STARTING_DIRECTORY}`);
+});
